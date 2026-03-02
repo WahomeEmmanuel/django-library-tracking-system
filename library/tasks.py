@@ -23,7 +23,7 @@ def send_loan_notification(loan_id):
 @shared_task
 def check_overdue_loans():
     try:
-        overdue_loans = Loan.objects.filter(is_returned=False, due_date__lt=timezone.now()) #.select_related('book','member.user')
+        overdue_loans = Loan.objects.filter(is_returned=False, due_date__lt=timezone.now()).select_related('book','member.user')
         for loan in overdue_loans:
             member_email = loan.member.user.email
             book_title = loan.book.title
