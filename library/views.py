@@ -4,6 +4,8 @@ from .models import Author, Book, Member, Loan
 from .serializers import AuthorSerializer, BookSerializer, MemberSerializer, LoanSerializer
 from rest_framework.decorators import action
 from django.utils import timezone
+from django.db import transaction
+from datetime import timedelta
 from .tasks import send_loan_notification
 
 class AuthorViewSet(viewsets.ModelViewSet):
@@ -52,3 +54,26 @@ class MemberViewSet(viewsets.ModelViewSet):
 class LoanViewSet(viewsets.ModelViewSet):
     queryset = Loan.objects.all()
     serializer_class = LoanSerializer
+
+    @action(detail=True, methods=['post'])
+    def extend_due_date(self, request, pk=None):
+        try:
+            loan = Loan.objects.select_for_update().get(pk=pk)
+        except Loan.DoesNotExist:
+            return Response({'error': 'Loan does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if loan.due_date < timezone.now():
+            return Response({'error': 'Loan is already overdue.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        additional_days = request.data.get('additional_days')
+        if additional_days < 0: # Validate that the additional_days is a positive integer.
+            return Response({'error': 'Additional days must be greater or equal to 1.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            loan.due_date = loan.due_date + timedelta(additional_days)
+            loan.save()
+
+        data = LoanSerializer(loan).data
+        return Response(data, status=status.HTTP_200_OK)
+
+
